@@ -2,6 +2,67 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 ---
+- name: Determine if ingress-nginx controller exists
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    namespace: ingress-nginx
+    name: ingress-nginx-controller
+  register: ingress_nginx_deployment
+  when: install_ingress
+
+- name: Install ingress-nginx controller
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('kubernetes.core.kustomize', dir=role_path ~ '/templates/k8s/ingress') }}"
+  when:
+    - install_ingress
+    - not ingress_nginx_deployment.resources | default([])
+
+- name: Wait for ingress-nginx controller
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    namespace: ingress-nginx
+    name: ingress-nginx-controller
+  register: ingress_nginx_ready
+  until: >-
+    ingress_nginx_ready.resources | length > 0 and
+    (ingress_nginx_ready.resources[0].status.readyReplicas | default(0)) > 0
+  retries: "{{ (wait_timeout | default(60) | int) // 10 }}"
+  delay: 10
+  when: install_ingress
+
+- name: Get ingress-nginx controller cluster IP
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Service
+    namespace: ingress-nginx
+    name: ingress-nginx-controller
+  register: ingress_nginx_service
+  when:
+    - install_ingress
+    - ingress_domain == 'localho.st'
+
+- name: Configure CoreDNS for ingress domain
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'templates/k8s/coredns/coredns.yaml.j2') }}"
+  vars:
+    clusterip: "{{ ingress_nginx_service.resources[0].spec.clusterIP }}"
+  when:
+    - install_ingress
+    - ingress_domain == 'localho.st'
+    - ingress_nginx_service.resources | length > 0
+
+- name: Restart CoreDNS
+  command: kubectl -n kube-system rollout restart deployment/coredns
+  changed_when: true
+  when:
+    - install_ingress
+    - ingress_domain == 'localho.st'
+    - ingress_nginx_service.resources | length > 0
+
 - name: Creating CRDs
   kubernetes.core.k8s:
     definition: "{{ lookup('kubernetes.core.kustomize', dir='https://github.com/hyperledger-labs/fabric-operator.git/config/crd') }}"
