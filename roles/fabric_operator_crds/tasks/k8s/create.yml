@@ -2,22 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 ---
-- name: Determine if ingress-nginx controller exists
-  kubernetes.core.k8s_info:
-    api_version: apps/v1
-    kind: Deployment
-    namespace: ingress-nginx
-    name: ingress-nginx-controller
-  register: ingress_nginx_deployment
-  when: install_ingress
-
-- name: Install ingress-nginx controller
+- name: Install or update ingress-nginx controller
   kubernetes.core.k8s:
     state: present
     definition: "{{ lookup('kubernetes.core.kustomize', dir=role_path ~ '/templates/k8s/ingress') }}"
-  when:
-    - install_ingress
-    - not ingress_nginx_deployment.resources | default([])
+  when: install_ingress
 
 - name: Wait for ingress-nginx controller
   kubernetes.core.k8s_info:
