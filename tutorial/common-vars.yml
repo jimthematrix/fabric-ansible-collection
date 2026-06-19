@@ -36,6 +36,9 @@ peer_resources:
     requests:
       cpu: 200m
       memory: 1Gi
+    limits:
+      cpu: 500m
+      memory: 2Gi
   chaincodelauncher:
     requests:
       cpu: 200m
