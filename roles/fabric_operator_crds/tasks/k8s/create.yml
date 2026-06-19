@@ -31,7 +31,8 @@
   register: ingress_nginx_service
   when:
     - install_ingress
-    - ingress_domain == 'localho.st'
+    - ingress_domain is defined
+    - ingress_domain | length > 0
 
 - name: Configure CoreDNS for ingress domain
   kubernetes.core.k8s:
@@ -41,7 +42,8 @@
     clusterip: "{{ ingress_nginx_service.resources[0].spec.clusterIP }}"
   when:
     - install_ingress
-    - ingress_domain == 'localho.st'
+    - ingress_domain is defined
+    - ingress_domain | length > 0
     - ingress_nginx_service.resources | length > 0
 
 - name: Restart CoreDNS
@@ -49,7 +51,8 @@
   changed_when: true
   when:
     - install_ingress
-    - ingress_domain == 'localho.st'
+    - ingress_domain is defined
+    - ingress_domain | length > 0
     - ingress_nginx_service.resources | length > 0
 
 - name: Creating CRDs

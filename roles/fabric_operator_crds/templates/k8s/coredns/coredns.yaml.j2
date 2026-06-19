@@ -11,7 +11,7 @@ data:
         health {
            lameduck 5s
         }
-        rewrite name regex (.*)\.localho\.st host.ingress.internal
+        rewrite name regex (.*)\.{{ ingress_domain | replace('.', '\\.') }} host.ingress.internal
         hosts {
           {{ clusterip }} host.ingress.internal
           fallthrough
