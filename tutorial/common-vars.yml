@@ -21,3 +21,22 @@ smart_contract_package: "fabcar@1.0.0.tgz"
 ca_version: ">=1.4,<2.0"
 peer_version: ">=2.2,<3.0"
 ordering_service_version: ">=2.2,<3.0"
+# Default peer resource requests are too low for CouchDB on kind; increase memory
+# to avoid OOMKilled in the couchdb sidecar (see endorsing_organization role).
+peer_resources:
+  peer:
+    requests:
+      cpu: 200m
+      memory: 1Gi
+  proxy:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  couchdb:
+    requests:
+      cpu: 200m
+      memory: 1Gi
+  chaincodelauncher:
+    requests:
+      cpu: 200m
+      memory: 512Mi
