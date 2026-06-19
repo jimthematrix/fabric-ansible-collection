@@ -9,7 +9,10 @@ import os
 import platform
 import re
 import subprocess
-from distutils.version import LooseVersion
+try:
+    from packaging.version import parse as parse_version
+except ImportError:
+    from distutils.version import LooseVersion as parse_version  # type: ignore  # noqa: F401 - removed in Python 3.12
 from inspect import getframeinfo, stack
 
 from ansible.module_utils._text import to_native
@@ -104,7 +107,7 @@ class BlockchainModule(AnsibleModule):
             if m is None:
                 self.fail_json(msg=wrong_version_bin(binary, '<unknown>', f'>= {min_fabric_version}', url=url), rc=process.returncode, stdout=process.stdout, stderr=process.stderr, cmd=f'{binary} version')
             version = m.group(1).strip('v')
-            if not LooseVersion(version) >= LooseVersion(min_fabric_version):
+            if not parse_version(version) >= parse_version(min_fabric_version):
                 self.fail_json(msg=wrong_version_bin(binary, version, f'>= {min_fabric_version}', url=url), rc=process.returncode, stdout=process.stdout, stderr=process.stderr, cmd=f'{binary} version')
 
     def check_for_missing_hsm_libs(self):
