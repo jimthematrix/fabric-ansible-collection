@@ -20,8 +20,13 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - https://github.com/kubernetes/ingress-nginx.git/deploy/static/provider/cloud?ref=controller-v1.1.2
+  # - https://github.com/kubernetes/ingress-nginx.git/deploy/static/provider/cloud?ref=controller-v1.1.2
 
+  # NOTE: using 'kind' provider base (not 'cloud') so hostPort is set on the
+  # controller container — required for kind's extraPortMappings to reach the
+  # ingress controller pod. The 'cloud' base assumes a real LoadBalancer and
+  # omits hostPort entirely.
+  - https://github.com/kubernetes/ingress-nginx.git/deploy/static/provider/kind?ref=controller-v1.1.2
 patchesStrategicMerge:
   - ingress-nginx-controller.yaml
 
