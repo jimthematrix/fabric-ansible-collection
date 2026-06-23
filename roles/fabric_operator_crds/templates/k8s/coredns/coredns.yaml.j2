@@ -11,12 +11,16 @@ data:
         health {
            lameduck 5s
         }
-        rewrite name regex (.*)\.{{ ingress_domain | replace('.', '\\.') }} host.ingress.internal
-        hosts {
-          {{ clusterip }} host.ingress.internal
-          fallthrough
-        }
         ready
+        template IN A {{ ingress_domain }} {
+            match (.*)\.{{ ingress_domain | replace('.', '\\.') }}\.$
+            answer "{% raw %}{{ .Name }}{% endraw %} 60 IN A {{ clusterip }}"
+            fallthrough
+        }
+        template IN AAAA {{ ingress_domain }} {
+            match (.*)\.{{ ingress_domain | replace('.', '\\.') }}\.$
+            rcode NOERROR
+        }
         kubernetes cluster.local in-addr.arpa ip6.arpa {
            pods insecure
            fallthrough in-addr.arpa ip6.arpa
