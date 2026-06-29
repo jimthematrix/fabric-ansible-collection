@@ -652,22 +652,24 @@ def create_genesis(module):
         )
     )
     envelope_proto = json_to_proto('common.Envelope', envelope_json)
+    # For a single-transaction block, Fabric computes the data hash as
+    # sha256(bytes.Join(data, nil)), which for one entry is just the
+    # serialized envelope.
     data_hash = hashlib.sha256(envelope_proto).digest()
 
+    # BlockHeader.number is a uint64, which jsonpb expects as a string.
+    # BlockMetadata.metadata entries are opaque bytes (base64 strings); use
+    # empty values for the standard metadata slots in a genesis block.
     block_json = dict(
         header=dict(
-            number=0,
+            number="0",
             data_hash=base64.b64encode(data_hash).decode('utf-8')
         ),
         data=dict(
             data=[envelope_json]
         ),
         metadata=dict(
-            metadata=[
-                dict(),
-                dict(),
-                dict()
-            ]
+            metadata=["", "", "", "", ""]
         )
     )
     block_proto = json_to_proto('common.Block', block_json)
