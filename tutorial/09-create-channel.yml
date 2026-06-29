@@ -73,6 +73,21 @@
                 orderer: V2_0
         when: result.msg is defined and 'NOT_FOUND' in result.msg
 
+      - name: Enroll a TLS identity for the ordering service admin endpoint
+        hyperledger.fabric_ansible_collection.enrolled_identity:
+            api_endpoint: "{{ api_endpoint }}"
+            api_authtype: "{{ api_authtype }}"
+            api_key: "{{ api_key }}"
+            api_secret: "{{ api_secret | default(omit) }}"
+            api_token_endpoint: "{{ api_token_endpoint | default(omit) }}"
+            certificate_authority: "{{ ordering_org_name }} CA"
+            name: "{{ ordering_org_name }} Admin TLS"
+            enrollment_id: "{{ ordering_service_enrollment_id }}"
+            enrollment_secret: "{{ ordering_service_enrollment_secret }}"
+            tls: true
+            path: "{{ ordering_org_name }} Admin TLS.json"
+        when: result.msg is defined and 'NOT_FOUND' in result.msg
+
       - name: Join the ordering service node to the channel
         hyperledger.fabric_ansible_collection.ordering_service_channel:
             api_endpoint: "{{ api_endpoint }}"
@@ -82,6 +97,7 @@
             api_token_endpoint: "{{ api_token_endpoint | default(omit) }}"
             operation: join
             ordering_service_node: "{{ ordering_service.ordering_service[0].name }}"
+            tls_identity: "{{ ordering_org_name }} Admin TLS.json"
             name: "{{ channel_name }}"
             path: channel_genesis_block.bin
         when: result.msg is defined and 'NOT_FOUND' in result.msg
