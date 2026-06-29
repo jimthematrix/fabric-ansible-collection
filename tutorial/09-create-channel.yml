@@ -7,7 +7,23 @@
   vars_files:
       - common-vars.yml
       - org1-vars.yml
+      - ordering-org-vars.yml
   tasks:
+      - name: Get the ordering service information
+        hyperledger.fabric_ansible_collection.ordering_service_info:
+            api_endpoint: "{{ api_endpoint }}"
+            api_authtype: "{{ api_authtype }}"
+            api_key: "{{ api_key }}"
+            api_secret: "{{ api_secret | default(omit) }}"
+            api_token_endpoint: "{{ api_token_endpoint | default(omit) }}"
+            name: "{{ ordering_service_name }}"
+        register: ordering_service
+
+      - name: Fail if the ordering service does not exist
+        fail:
+            msg: "{{ ordering_service_name }} does not exist"
+        when: not ordering_service.exists
+
       - name: Check to see if the channel already exists
         hyperledger.fabric_ansible_collection.channel_block:
             api_endpoint: "{{ api_endpoint }}"
@@ -30,16 +46,19 @@
             msg: "{{ result.msg }}"
         when: result.msg is defined and 'NOT_FOUND' not in result.msg
 
-      - name: Create the configuration update for the new channel
+      - name: Create the genesis block for the new channel
         hyperledger.fabric_ansible_collection.channel_config:
             api_endpoint: "{{ api_endpoint }}"
             api_authtype: "{{ api_authtype }}"
             api_key: "{{ api_key }}"
             api_secret: "{{ api_secret | default(omit) }}"
             api_token_endpoint: "{{ api_token_endpoint | default(omit) }}"
-            operation: create
+            operation: create_genesis
             name: "{{ channel_name }}"
-            path: config_update.bin
+            path: channel_genesis_block.bin
+            ordering_service_nodes:
+                - "{{ ordering_service.ordering_service[0].name }}"
+            ordering_organization: "{{ ordering_org_name }}"
             organizations:
                 - "{{ org1_name }}"
             policies:
@@ -50,28 +69,19 @@
                 LifecycleEndorsement: "{{ lookup('template', '09-lifecycle-endorsement-policy.json.j2') }}"
             capabilities:
                 application: V2_0
+                channel: V2_0
+                orderer: V2_0
         when: result.msg is defined and 'NOT_FOUND' in result.msg
 
-      - name: Sign the channel configuration update for the new channel
-        hyperledger.fabric_ansible_collection.channel_config:
-            operation: sign_update
-            identity: "{{ org1_name }} Admin.json"
-            msp_id: "{{ org1_msp_id }}"
-            name: "{{ channel_name }}"
-            path: config_update.bin
-        when: result.msg is defined and 'NOT_FOUND' in result.msg
-
-      - name: Apply the channel configuration update for the new channel
-        hyperledger.fabric_ansible_collection.channel_config:
+      - name: Join the ordering service node to the channel
+        hyperledger.fabric_ansible_collection.ordering_service_channel:
             api_endpoint: "{{ api_endpoint }}"
             api_authtype: "{{ api_authtype }}"
             api_key: "{{ api_key }}"
             api_secret: "{{ api_secret | default(omit) }}"
             api_token_endpoint: "{{ api_token_endpoint | default(omit) }}"
-            operation: apply_update
-            ordering_service: "{{ ordering_service_name }}"
-            identity: "{{ org1_name }} Admin.json"
-            msp_id: "{{ org1_msp_id }}"
+            operation: join
+            ordering_service_node: "{{ ordering_service.ordering_service[0].name }}"
             name: "{{ channel_name }}"
-            path: config_update.bin
+            path: channel_genesis_block.bin
         when: result.msg is defined and 'NOT_FOUND' in result.msg

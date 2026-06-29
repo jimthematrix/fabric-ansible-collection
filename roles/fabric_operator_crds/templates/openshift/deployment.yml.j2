@@ -44,7 +44,7 @@ spec:
       containers:
         - name: "ibp-webhook"
           image: "{{ webhook_image }}:{{ webhook_tag }}"
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           securityContext:
             privileged: false
             allowPrivilegeEscalation: false

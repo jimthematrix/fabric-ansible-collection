@@ -160,6 +160,7 @@
       api_timeout: "{{ api_timeout | default(omit) }}"
       name: "{{ ordering_service_name }}"
       msp_id: "{{ organization_msp_id }}"
+      system_channel_id: "{{ ordering_service_system_channel_id }}"
       nodes: "{{ ordering_service_nodes }}"
       certificate_authority: "{{ ca_name }}"
       enrollment_id: "{{ ordering_service_enrollment_id }}"

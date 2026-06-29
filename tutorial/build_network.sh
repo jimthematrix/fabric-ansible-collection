@@ -26,8 +26,6 @@ if [ "${COMMAND}" = "build" ]; then
         ansible-playbook 03-export-organization.yml
         ansible-playbook 04-import-organization.yml
     fi
-    ansible-playbook 05-enable-capabilities.yml
-    ansible-playbook 06-add-organization-to-consortium.yml
     if [ "${IMPORT_EXPORT_REQUIRED}" = "1" ]; then
         ansible-playbook 07-export-ordering-service.yml
         ansible-playbook 08-import-ordering-service.yml

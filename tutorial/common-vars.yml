@@ -6,6 +6,8 @@
 # i.e. needed by multiple orgs so can't just live in a per org file
 ordering_org_name: "Ordering Org"
 ordering_service_name: "Ordering Service"
+# Empty system channel ID creates orderers for channel participation (no system channel).
+ordering_service_system_channel_id: ""
 org1_name: "Org1"
 org1_msp_id: Org1MSP
 org2_name: "Org2"

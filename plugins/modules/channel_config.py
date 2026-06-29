@@ -7,6 +7,8 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+import base64
+import hashlib
 import json
 import os
 import shutil
@@ -19,16 +21,17 @@ from ansible.module_utils.basic import _load_params, env_fallback
 
 from pathlib import Path
 
-from ..module_utils.dict_utils import diff_dicts
+from ..module_utils.dict_utils import copy_dict, diff_dicts
 from ..module_utils.fabric_utils import get_fabric_cfg_path
 from ..module_utils.file_utils import get_temp_file
 from ..module_utils.module import BlockchainModule
-from ..module_utils.msp_utils import convert_identity_to_msp_path
+from ..module_utils.msp_utils import convert_identity_to_msp_path, organization_to_msp
 from ..module_utils.ordering_services import OrderingService
 from ..module_utils.proto_utils import json_to_proto, proto_to_json
 from ..module_utils.utils import (get_console, get_identity_by_module,
                                   get_ordering_service_by_module,
                                   get_ordering_service_nodes_by_module,
+                                  get_organization_by_module,
                                   get_organizations_by_module,
                                   resolve_identity)
 
@@ -327,10 +330,7 @@ path:
 '''
 
 
-def create(module):
-
-    # Log in to the console.
-    console = get_console(module)
+def _build_new_channel_config_update(module, console, include_consortium=True, populate_organization_msps=False):
 
     # Get the organizations.
     organizations = get_organizations_by_module(console, module)
@@ -350,55 +350,62 @@ def create(module):
     # Build the config update for a new channel.
     name = module.params['name']
     application_capability = module.params['capabilities']['application']
-    config_update_json = dict(
-        channel_id=name,
-        read_set=dict(
-            groups=dict(
-                Application=dict(
-                    groups=dict()
-                )
-            ),
-            values=dict(
-                Consortium=dict(
-                    value=dict(
-                        name='SampleConsortium'
-                    )
-                )
+    endorsement_policy_required = application_capability is not None and application_capability >= 'V2_0'
+    read_set = dict(
+        groups=dict(
+            Application=dict(
+                groups=dict()
             )
         ),
-        write_set=dict(
-            groups=dict(
-                Application=dict(
-                    groups=dict(),
-                    mod_policy='Admins',
-                    policies=dict(),
-                    values=dict(
-                        Capabilities=dict(
-                            mod_policy='Admins',
-                            value=dict(
-                                capabilities={
-                                    application_capability: {}
-                                }
-                            )
+        values=dict()
+    )
+    write_set = dict(
+        groups=dict(
+            Application=dict(
+                groups=dict(),
+                mod_policy='Admins',
+                policies=dict(),
+                values=dict(
+                    Capabilities=dict(
+                        mod_policy='Admins',
+                        value=dict(
+                            capabilities={
+                                application_capability: {}
+                            }
                         )
-                    ),
-                    version=1
-                )
-            ),
-            values=dict(
-                Consortium=dict(
-                    value=dict(
-                        name='SampleConsortium'
                     )
-                )
+                ),
+                version=1
+            )
+        ),
+        values=dict()
+    )
+    if include_consortium:
+        read_set['values']['Consortium'] = dict(
+            value=dict(
+                name='SampleConsortium'
             )
         )
+        write_set['values']['Consortium'] = dict(
+            value=dict(
+                name='SampleConsortium'
+            )
+        )
+    config_update_json = dict(
+        channel_id=name,
+        read_set=read_set,
+        write_set=write_set
     )
 
     # Add the organizations to the config update.
     for organization in organizations:
-        config_update_json['read_set']['groups']['Application']['groups'][organization.msp_id] = dict()
-        config_update_json['write_set']['groups']['Application']['groups'][organization.msp_id] = dict()
+        if populate_organization_msps:
+            config_update_json['write_set']['groups']['Application']['groups'][organization.msp_id] = organization_to_msp(
+                organization,
+                endorsement_policy_required
+            )
+        else:
+            config_update_json['write_set']['groups']['Application']['groups'][organization.msp_id] = dict()
 
     # Add the policies to the config update.
     for policyName, policy in actual_policies.items():
@@ -489,6 +496,18 @@ def create(module):
         for acl_name, acl_policy in acls.items():
             acls_value['value']['acls'][acl_name] = dict(policy_ref=acl_policy)
 
+    # Add the ordering organization MSP to the orderer group.
+    ordering_organization = module.params['ordering_organization']
+    if ordering_organization is not None:
+        ordering_org = get_organization_by_module(console, module, parameter_name='ordering_organization')
+        orderer_group = config_update_json['write_set']['groups'].setdefault('Orderer', dict())
+        orderer_group.setdefault('mod_policy', 'Admins')
+        orderer_group.setdefault('policies', dict())
+        orderer_group.setdefault('groups', dict())
+        orderer_group.setdefault('values', dict())
+        orderer_group.setdefault('version', 0)
+        orderer_group['groups'][ordering_org.msp_id] = organization_to_msp(ordering_org, False)
+
     # Handle the ordering service nodes.
     if module.params['ordering_service_nodes'] is not None:
 
@@ -521,6 +540,10 @@ def create(module):
         # Update the configuration.
         config_update_json['read_set']['groups'].setdefault('Orderer', dict()).setdefault('values', dict()).setdefault('ConsensusType', dict())
         orderer_group = config_update_json['write_set']['groups'].setdefault('Orderer', dict())
+        orderer_group.setdefault('mod_policy', 'Admins')
+        orderer_group.setdefault('policies', dict())
+        orderer_group.setdefault('groups', dict())
+        orderer_group.setdefault('version', 0)
         orderer_values = orderer_group.setdefault('values', dict())
         orderer_values['ConsensusType'] = dict(
             mod_policy='Admins',
@@ -547,6 +570,17 @@ def create(module):
             ),
             version=1
         )
+
+    return config_update_json
+
+
+def create(module):
+
+    # Log in to the console.
+    console = get_console(module)
+
+    config_update_json = _build_new_channel_config_update(module, console, include_consortium=True, populate_organization_msps=False)
+    name = module.params['name']
 
     # Build the config envelope.
     config_update_envelope_json = dict(
@@ -581,6 +615,79 @@ def create(module):
     else:
         with open(path, 'wb') as file:
             file.write(config_update_envelope_proto)
+        module.exit_json(changed=True, path=path)
+
+
+def create_genesis(module):
+
+    # Log in to the console.
+    console = get_console(module)
+
+    config_update_json = _build_new_channel_config_update(
+        module,
+        console,
+        include_consortium=False,
+        populate_organization_msps=True
+    )
+    name = module.params['name']
+    channel_group = copy_dict(config_update_json['write_set'])
+    channel_group.setdefault('mod_policy', 'Admins')
+    channel_group.setdefault('policies', dict())
+    channel_group.setdefault('version', 0)
+
+    config_json = dict(
+        channel_group=channel_group
+    )
+    envelope_json = dict(
+        payload=dict(
+            header=dict(
+                channel_header=dict(
+                    channel_id=name,
+                    type=1
+                )
+            ),
+            data=dict(
+                config=config_json
+            )
+        )
+    )
+    envelope_proto = json_to_proto('common.Envelope', envelope_json)
+    data_hash = hashlib.sha256(envelope_proto).digest()
+
+    block_json = dict(
+        header=dict(
+            number=0,
+            data_hash=base64.b64encode(data_hash).decode('utf-8')
+        ),
+        data=dict(
+            data=[envelope_json]
+        ),
+        metadata=dict(
+            metadata=[
+                dict(),
+                dict(),
+                dict()
+            ]
+        )
+    )
+    block_proto = json_to_proto('common.Block', block_json)
+
+    path = module.params['path']
+    if os.path.exists(path):
+        changed = False
+        try:
+            with open(path, 'rb') as file:
+                original_block_json = proto_to_json('common.Block', file.read())
+            changed = diff_dicts(original_block_json, block_json)
+        except Exception:
+            changed = True
+        if changed:
+            with open(path, 'wb') as file:
+                file.write(block_proto)
+        module.exit_json(changed=changed, path=path)
+    else:
+        with open(path, 'wb') as file:
+            file.write(block_proto)
         module.exit_json(changed=True, path=path)
 
 
@@ -864,9 +971,10 @@ def main():
         api_secret=dict(type='str', no_log=True),
         api_timeout=dict(type='int', default=60),
         api_token_endpoint=dict(type='str', default='https://iam.cloud.ibm.com/identity/token'),
-        operation=dict(type='str', required=True, choices=['create', 'fetch', 'compute_update', 'sign_update', 'sign_update_organizations', 'apply_update']),
+        operation=dict(type='str', required=True, choices=['create', 'create_genesis', 'fetch', 'compute_update', 'sign_update', 'sign_update_organizations', 'apply_update']),
         ordering_service=dict(type='raw'),
         ordering_service_nodes=dict(type='list', elements='raw'),
+        ordering_organization=dict(type='raw'),
         tls_handshake_time_shift=dict(type='str', fallback=(env_fallback, ['IBP_TLS_HANDSHAKE_TIME_SHIFT'])),   # TODO: Look into renaming this env variable
         identity=dict(type='raw'),
         msp_id=dict(type='str'),
@@ -900,6 +1008,7 @@ def main():
     required_if = [
         ('api_authtype', 'basic', ['api_secret']),
         ('operation', 'create', ['api_endpoint', 'api_authtype', 'api_key', 'organizations', 'policies', 'name', 'path']),
+        ('operation', 'create_genesis', ['api_endpoint', 'api_authtype', 'api_key', 'organizations', 'policies', 'name', 'path', 'ordering_service_nodes', 'ordering_organization']),
         ('operation', 'fetch', ['api_endpoint', 'api_authtype', 'api_key', 'identity', 'msp_id', 'name', 'path']),
         ('operation', 'compute_update', ['name', 'path', 'original', 'updated']),
         ('operation', 'sign_update', ['identity', 'msp_id', 'name', 'path']),
@@ -926,6 +1035,8 @@ def main():
         operation = module.params['operation']
         if operation == 'create':
             create(module)
+        elif operation == 'create_genesis':
+            create_genesis(module)
         elif operation == 'fetch':
             fetch(module)
         elif operation == 'compute_update':

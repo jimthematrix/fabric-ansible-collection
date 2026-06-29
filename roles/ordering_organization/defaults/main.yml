@@ -20,6 +20,7 @@ ca_name: "{{ organization_name }} CA"
 # ca_storage:
 # ca_version:
 ordering_service_name: Ordering Service
+ordering_service_system_channel_id: ""
 ordering_service_nodes: 1
 # ordering_service_resources:
 # ordering_service_storage:

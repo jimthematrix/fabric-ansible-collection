@@ -59,7 +59,7 @@ spec:
           image: "{{ operator_image }}:{{ operator_tag }}"
           command:
           - ibp-operator
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           securityContext:
             privileged: false
             allowPrivilegeEscalation: false

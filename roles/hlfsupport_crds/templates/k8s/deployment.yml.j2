@@ -43,7 +43,7 @@ spec:
       containers:
         - name: "ibm-hlfsupport-webhook"
           image: "{{ webhook_image }}:{{ webhook_tag }}"
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           securityContext:
             privileged: false
             allowPrivilegeEscalation: false
