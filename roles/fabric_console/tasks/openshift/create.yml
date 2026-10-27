@@ -5,7 +5,7 @@
 - name: Determine if console exists
   kubernetes.core.k8s_info:
     namespace: "{{ project }}"
-    api_version: "ibp.com/v1alpha2"
+    api_version: "ibp.com/v1beta1"
     kind: IBPConsole
     name: "{{ console_name }}"
   register: existing_console
